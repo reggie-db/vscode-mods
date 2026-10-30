@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runMods } from "../src/core.mjs";
+import { runMods, sha256 } from "../src/core.mjs";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const modsRoot = path.join(repositoryRoot, "mods");
@@ -11,6 +11,7 @@ const originalBundle = [
   "`localConversation.hookItem.summary.ariaLabel`;",
   "`localConversation.hookItem.eventName.preToolUse`;",
   "`localConversation.hookItem.eventName.postToolUse`;",
+  "`localConversation.hookItem.eventName.userPromptSubmit`;",
   "function k6(e){let t=(0,Q.c)(36),{item:n}=e,r=Ai(),[i,a]=(0,Z.useState)(!1),o,s,c,l,u,d,f,p;t[0]!==r;}",
   "function g5(a){let u=a.type===`hook`?(0,$.jsx)(k6,{item:a}):a.type===`reasoning`?null:p5({item:a});return u}",
   "function render(x,F,_e,t){for(let e of x)_e(`pre-user-${e.id}`,(0,$.jsx)(k6,{item:e}));for(let e of F)_e(`post-assistant-${e.id}`,e.type===`hook`?(0,$.jsx)(k6,{item:e}):p5({item:e,conversationId:t}))}",
@@ -77,6 +78,61 @@ async function customMods(mutator) {
   return root;
 }
 
+async function installPreviousVersion(paths) {
+  const component =
+    "function k6(e){let t=(0,Q.c)(36),{item:n}=e,r=Ai(),[i,a]=(0,Z.useState)(!1),o,s,c,l,u,d,f,p;";
+  const unit =
+    "a.type===`hook`?(0,$.jsx)(k6,{item:a}):a.type===`reasoning`?null";
+  const preUser =
+    "for(let e of x)_e(`pre-user-${e.id}`,(0,$.jsx)(k6,{item:e}));";
+  const postAssistant =
+    "e.type===`hook`?(0,$.jsx)(k6,{item:e}):p5({item:e,conversationId:";
+  const hidden = (item) =>
+    `${item}.run.eventName===\`preToolUse\`||${item}.run.eventName===\`postToolUse\``;
+  const previousBundle = originalBundle
+    .replace(
+      component,
+      `${component}/* vscode-mods:hide-codex-tool-hook-rows */if(${hidden("n")})return null;`,
+    )
+    .replace(
+      unit,
+      `a.type===\`hook\`?/* vscode-mods:hide-codex-tool-hook-unit */(${hidden("a")}?null:(0,$.jsx)(k6,{item:a})):a.type===\`reasoning\`?null`,
+    )
+    .replace(
+      preUser,
+      `for(let e of x){/* vscode-mods:hide-codex-pre-user-hook-row */if(${hidden("e")})continue;_e(\`pre-user-${"${e.id}"}\`,(0,$.jsx)(k6,{item:e}));}`,
+    )
+    .replace(
+      postAssistant,
+      `e.type===\`hook\`?/* vscode-mods:hide-codex-post-assistant-hook-row */(${hidden("e")}?null:(0,$.jsx)(k6,{item:e})):p5({item:e,conversationId:`,
+    );
+  const backup = path.join(paths.stateRoot, "previous-original.bak");
+  await mkdir(paths.stateRoot, { recursive: true });
+  await writeFile(paths.bundlePath, previousBundle, "utf8");
+  await writeFile(backup, originalBundle, "utf8");
+  await writeFile(
+    path.join(paths.stateRoot, "state.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      mods: {
+        "hide-codex-tool-hook-rows": {
+          targets: {
+            [paths.bundlePath]: {
+              file: paths.bundlePath,
+              backup,
+              originalHash: sha256(originalBundle),
+              patchedHash: sha256(previousBundle),
+              appliedAt: new Date().toISOString(),
+            },
+          },
+        },
+      },
+    }, null, 2)}\n`,
+    "utf8",
+  );
+  return previousBundle;
+}
+
 describe("folder-based mod application", () => {
   test("applies every discovered mod and is idempotent", async () => {
     const paths = await fixture();
@@ -93,17 +149,19 @@ describe("folder-based mod application", () => {
       unchanged: 0,
       failures: 0,
     });
-    expect(await readFile(paths.bundlePath, "utf8")).toContain(
-      "/* vscode-mods:hide-codex-tool-hook-rows */",
+    const patched = await readFile(paths.bundlePath, "utf8");
+    expect(patched).toContain("/* vscode-mods:hidden-hook-types */");
+    expect(patched).toContain(
+      "new Set([`preToolUse`,`postToolUse`,`userPromptSubmit`])",
     );
-    expect(await readFile(paths.bundlePath, "utf8")).toContain(
-      "/* vscode-mods:hide-codex-tool-hook-unit */",
+    expect(patched).toContain(
+      "/* vscode-mods:hide-codex-tool-hook-unit-v2 */",
     );
-    expect(await readFile(paths.bundlePath, "utf8")).toContain(
-      "/* vscode-mods:hide-codex-pre-user-hook-row */",
+    expect(patched).toContain(
+      "/* vscode-mods:hide-codex-pre-user-hook-row-v2 */",
     );
-    expect(await readFile(paths.bundlePath, "utf8")).toContain(
-      "/* vscode-mods:hide-codex-post-assistant-hook-row */",
+    expect(patched).toContain(
+      "/* vscode-mods:hide-codex-post-assistant-hook-row-v2 */",
     );
 
     const second = await runMods({
@@ -145,21 +203,11 @@ describe("folder-based mod application", () => {
   test("upgrades an applied mod while preserving the original backup", async () => {
     const paths = await fixture();
     const logger = memoryLogger();
-    const previousModsRoot = await customMods((manifest) => {
-      manifest.operations = manifest.operations.slice(0, 1);
-    });
-
-    await runMods({
-      modsRoot: previousModsRoot,
-      extensionRoots: [paths.extensionsRoot],
-      stateRoot: paths.stateRoot,
-      logger,
-    });
-    const previousVersion = await readFile(paths.bundlePath, "utf8");
+    const previousVersion = await installPreviousVersion(paths);
     expect(previousVersion).toContain(
       "/* vscode-mods:hide-codex-tool-hook-rows */",
     );
-    expect(previousVersion).not.toContain(
+    expect(previousVersion).toContain(
       "/* vscode-mods:hide-codex-tool-hook-unit */",
     );
 
@@ -175,6 +223,13 @@ describe("folder-based mod application", () => {
       unchanged: 0,
       failures: 0,
     });
+    const upgradedBundle = await readFile(paths.bundlePath, "utf8");
+    expect(upgradedBundle).toContain(
+      "new Set([`preToolUse`,`postToolUse`,`userPromptSubmit`])",
+    );
+    expect(upgradedBundle).not.toContain(
+      "/* vscode-mods:hide-codex-tool-hook-rows */",
+    );
 
     const restored = await runMods({
       action: "restore",
@@ -251,7 +306,7 @@ describe("folder-based mod application", () => {
     const logger = memoryLogger();
     const invalidModsRoot = await customMods((manifest) => {
       manifest.operations[0].regex.replacement =
-        "$1/* vscode-mods:hide-codex-tool-hook-rows */if(";
+        "/* vscode-mods:hidden-hook-types */if(";
     });
 
     const result = await runMods({

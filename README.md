@@ -72,8 +72,8 @@ requires known markers, and performs a regular-expression replacement only
 when the expected match count is exact. This intentionally makes patches fail
 after incompatible extension updates instead of guessing against changed code.
 
-The included Codex mod keeps `PreToolUse` and `PostToolUse` hooks running while
-hiding their webview timeline rows.
+The included Codex mod keeps `PreToolUse`, `PostToolUse`, and
+`UserPromptSubmit` hooks running while hiding their webview timeline rows.
 
 ## Safety behavior
 

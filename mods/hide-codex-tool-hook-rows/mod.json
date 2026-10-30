@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "hide-codex-tool-hook-rows",
   "name": "Hide Codex tool hook rows",
-  "description": "Keep PreToolUse and PostToolUse hooks running while hiding their timeline rows in the Codex VS Code webview.",
+  "description": "Keep selected hooks running while hiding their timeline rows in the Codex VS Code webview.",
   "extension": {
     "id": "openai.chatgpt",
     "directoryPrefix": "openai.chatgpt-"
@@ -14,14 +14,15 @@
       "requiredContains": [
         "localConversation.hookItem.summary.ariaLabel",
         "localConversation.hookItem.eventName.preToolUse",
-        "localConversation.hookItem.eventName.postToolUse"
+        "localConversation.hookItem.eventName.postToolUse",
+        "localConversation.hookItem.eventName.userPromptSubmit"
       ],
-      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-tool-hook-rows */",
+      "alreadyAppliedMarker": "/* vscode-mods:hidden-hook-types */",
       "regex": {
-        "pattern": "(function\\s+[$A-Za-z_][$\\w]*\\(([$A-Za-z_][$\\w]*)\\)\\{let\\s+[$A-Za-z_][$\\w]*=\\(0,[$A-Za-z_][$\\w]*\\.c\\)\\(\\d+\\),\\{item:([$A-Za-z_][$\\w]*)\\}=\\2,[$A-Za-z_][$\\w]*=[$A-Za-z_][$\\w]*\\(\\),\\[[$A-Za-z_][$\\w]*,[$A-Za-z_][$\\w]*\\]=\\(0,[$A-Za-z_][$\\w]*\\.useState\\)\\(!1\\),[$A-Za-z_][$\\w,]*;)",
+        "pattern": "(function\\s+[$A-Za-z_][$\\w]*\\(([$A-Za-z_][$\\w]*)\\)\\{let\\s+[$A-Za-z_][$\\w]*=\\(0,[$A-Za-z_][$\\w]*\\.c\\)\\(\\d+\\),\\{item:([$A-Za-z_][$\\w]*)\\}=\\2,[$A-Za-z_][$\\w]*=[$A-Za-z_][$\\w]*\\(\\),\\[[$A-Za-z_][$\\w]*,[$A-Za-z_][$\\w]*\\]=\\(0,[$A-Za-z_][$\\w]*\\.useState\\)\\(!1\\),[$A-Za-z_][$\\w,]*;)(?:/\\* vscode-mods:hide-codex-tool-hook-rows \\*/if\\(\\3\\.run\\.eventName===`preToolUse`\\|\\|\\3\\.run\\.eventName===`postToolUse`\\)return null;)?",
         "flags": "",
         "expectedMatches": 1,
-        "replacement": "$1/* vscode-mods:hide-codex-tool-hook-rows */if($3.run.eventName===`preToolUse`||$3.run.eventName===`postToolUse`)return null;"
+        "replacement": "/* vscode-mods:hidden-hook-types */const __vscodeModsHiddenHookTypes=new Set([`preToolUse`,`postToolUse`,`userPromptSubmit`]);function __vscodeModsShouldHideHook(e){return __vscodeModsHiddenHookTypes.has(e?.run?.eventName)}$1if(__vscodeModsShouldHideHook($3))return null;"
       }
     },
     {
@@ -30,14 +31,15 @@
       "requiredContains": [
         "localConversation.hookItem.summary.ariaLabel",
         "localConversation.hookItem.eventName.preToolUse",
-        "localConversation.hookItem.eventName.postToolUse"
+        "localConversation.hookItem.eventName.postToolUse",
+        "localConversation.hookItem.eventName.userPromptSubmit"
       ],
-      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-tool-hook-unit */",
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-tool-hook-unit-v2 */",
       "regex": {
-        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(:\\2\\.type===`reasoning`\\?null)",
+        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(?:/\\* vscode-mods:hide-codex-tool-hook-unit \\*/\\(\\2\\.run\\.eventName===`preToolUse`\\|\\|\\2\\.run\\.eventName===`postToolUse`\\?null:)?(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(?:\\))?(:\\2\\.type===`reasoning`\\?null)",
         "flags": "",
         "expectedMatches": 1,
-        "replacement": "$1/* vscode-mods:hide-codex-tool-hook-unit */($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`?null:$3)$5"
+        "replacement": "$1/* vscode-mods:hide-codex-tool-hook-unit-v2 */(__vscodeModsShouldHideHook($2)?null:$3)$5"
       }
     },
     {
@@ -46,14 +48,15 @@
       "requiredContains": [
         "localConversation.hookItem.summary.ariaLabel",
         "localConversation.hookItem.eventName.preToolUse",
-        "localConversation.hookItem.eventName.postToolUse"
+        "localConversation.hookItem.eventName.postToolUse",
+        "localConversation.hookItem.eventName.userPromptSubmit"
       ],
-      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-pre-user-hook-row */",
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-pre-user-hook-row-v2 */",
       "regex": {
-        "pattern": "(for\\(let\\s+([$A-Za-z_][$\\w]*)\\s+of\\s+[$A-Za-z_][$\\w]*\\))(([$A-Za-z_][$\\w]*)\\(`pre-user-\\$\\{\\2\\.id\\}`,\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\([$A-Za-z_][$\\w]*,\\{item:\\2\\}\\)\\);)",
+        "pattern": "(for\\(let\\s+([$A-Za-z_][$\\w]*)\\s+of\\s+[$A-Za-z_][$\\w]*\\))(?:\\{/\\* vscode-mods:hide-codex-pre-user-hook-row \\*/if\\(\\2\\.run\\.eventName===`preToolUse`\\|\\|\\2\\.run\\.eventName===`postToolUse`\\)continue;)?((?:[$A-Za-z_][$\\w]*)\\(`pre-user-\\$\\{\\2\\.id\\}`,\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\([$A-Za-z_][$\\w]*,\\{item:\\2\\}\\)\\);)(?:\\})?",
         "flags": "",
         "expectedMatches": 1,
-        "replacement": "$1{/* vscode-mods:hide-codex-pre-user-hook-row */if($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`)continue;$3}"
+        "replacement": "$1{/* vscode-mods:hide-codex-pre-user-hook-row-v2 */if(__vscodeModsShouldHideHook($2))continue;$3}"
       }
     },
     {
@@ -62,14 +65,15 @@
       "requiredContains": [
         "localConversation.hookItem.summary.ariaLabel",
         "localConversation.hookItem.eventName.preToolUse",
-        "localConversation.hookItem.eventName.postToolUse"
+        "localConversation.hookItem.eventName.postToolUse",
+        "localConversation.hookItem.eventName.userPromptSubmit"
       ],
-      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-post-assistant-hook-row */",
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-post-assistant-hook-row-v2 */",
       "regex": {
-        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(:[$A-Za-z_][$\\w]*\\(\\{item:\\2,conversationId:)",
+        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(?:/\\* vscode-mods:hide-codex-post-assistant-hook-row \\*/\\(\\2\\.run\\.eventName===`preToolUse`\\|\\|\\2\\.run\\.eventName===`postToolUse`\\?null:)?(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(?:\\))?(:[$A-Za-z_][$\\w]*\\(\\{item:\\2,conversationId:)",
         "flags": "",
         "expectedMatches": 1,
-        "replacement": "$1/* vscode-mods:hide-codex-post-assistant-hook-row */($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`?null:$3)$5"
+        "replacement": "$1/* vscode-mods:hide-codex-post-assistant-hook-row-v2 */(__vscodeModsShouldHideHook($2)?null:$3)$5"
       }
     }
   ]
