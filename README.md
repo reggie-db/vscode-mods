@@ -66,25 +66,34 @@ Every immediate folder beneath `mods/` must contain a `mod.json`. The runner
 loads all valid folders in sorted order. An invalid or outdated mod does not
 stop the remaining folders.
 
-```text
-mods/
-├── disable-vscode-native-chat/
-├── hide-codex-tool-hook-rows/
-└── scope-codex-history-to-project/
-```
-
 Mods are declarative. Extension operations identify one extension-relative
 file, require known markers, and perform a regular-expression replacement only
 when the expected match count is exact. User-settings operations set one JSONC
 property while preserving the rest of the file. Extension patches intentionally
 fail after incompatible updates instead of guessing against changed code.
 
-The included Codex mod keeps `PreToolUse`, `PostToolUse`, and
-`UserPromptSubmit` hooks running while hiding their webview timeline rows.
-The project-history mod limits the inline list, full history menu, sidebar,
-`View all` total, and running-task counter to the active VS Code project. The
-native-chat mod uses VS Code's supported `chat.disableAIFeatures` user setting
-instead of modifying the VS Code application bundle.
+### `disable-vscode-native-chat`
+
+Disables VS Code's native AI and chat surfaces by setting the supported
+`chat.disableAIFeatures` user setting to `true`. It preserves comments and
+unrelated values in `settings.json` and does not modify the VS Code application
+bundle or disable the separately installed Codex extension.
+
+### `hide-codex-tool-hook-rows`
+
+Keeps Codex `PreToolUse`, `PostToolUse`, and `UserPromptSubmit` hooks running
+while hiding their timeline rows and removing the space those rows would have
+occupied. The hidden hook types are defined in one list in the applied patch.
+
+### `scope-codex-history-to-project`
+
+Limits Codex history to conversations associated with the active VS Code
+workspace roots. This applies consistently to the inline recent list, the
+`View all` total, the full searchable history menu, sidebar history, and the
+spinning in-progress counter. Codex-managed worktrees use Codex's existing
+project grouping to map back to their source project. If the active project
+cannot be resolved, the mod shows no history instead of falling back to global
+history.
 
 ## Safety behavior
 
