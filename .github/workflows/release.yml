@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Test
+        run: bun run check
+      - name: Build executables
+        run: bun scripts/build-release.mjs
+      - name: Package release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/assets
+          package_tar() {
+            local platform="$1"
+            local binary="dist/release-bin/vscode-mods-${platform}"
+            local stage="dist/stage-${platform}"
+            mkdir -p "${stage}/bin"
+            cp "${binary}" "${stage}/bin/vscode-mods"
+            cp -R mods "${stage}/mods"
+            tar -C "${stage}" -czf "dist/assets/vscode-mods-${platform}.tar.gz" .
+          }
+          package_zip() {
+            local platform="$1"
+            local binary="dist/release-bin/vscode-mods-${platform}.exe"
+            local stage="dist/stage-${platform}"
+            mkdir -p "${stage}/bin"
+            cp "${binary}" "${stage}/bin/vscode-mods.exe"
+            cp -R mods "${stage}/mods"
+            (cd "${stage}" && zip -qr "../assets/vscode-mods-${platform}.zip" .)
+          }
+          package_tar darwin-arm64
+          package_tar darwin-x64
+          package_tar linux-arm64
+          package_tar linux-x64
+          package_zip windows-arm64
+          package_zip windows-x64
+          (cd dist/assets && sha256sum vscode-mods-* > checksums.txt)
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/assets/* --generate-notes --verify-tag
+

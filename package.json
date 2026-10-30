@@ -1,0 +1,13 @@
+{
+  "name": "vscode-mods",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "apply": "bun src/cli.mjs apply",
+    "restore": "bun src/cli.mjs restore",
+    "test": "bun test",
+    "check": "bun test && bun build src/cli.mjs --target=bun --outdir=dist/check",
+    "build": "bun build --compile src/cli.mjs --outfile=dist/vscode-mods"
+  }
+}

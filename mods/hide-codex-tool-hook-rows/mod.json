@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "hide-codex-tool-hook-rows",
+  "name": "Hide Codex tool hook rows",
+  "description": "Keep PreToolUse and PostToolUse hooks running while hiding their timeline rows in the Codex VS Code webview.",
+  "extension": {
+    "id": "openai.chatgpt",
+    "directoryPrefix": "openai.chatgpt-"
+  },
+  "operations": [
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "localConversation.hookItem.summary.ariaLabel",
+        "localConversation.hookItem.eventName.preToolUse",
+        "localConversation.hookItem.eventName.postToolUse"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-tool-hook-rows */",
+      "regex": {
+        "pattern": "(function\\s+[$A-Za-z_][$\\w]*\\(([$A-Za-z_][$\\w]*)\\)\\{let\\s+[$A-Za-z_][$\\w]*=\\(0,[$A-Za-z_][$\\w]*\\.c\\)\\(\\d+\\),\\{item:([$A-Za-z_][$\\w]*)\\}=\\2,[$A-Za-z_][$\\w]*=[$A-Za-z_][$\\w]*\\(\\),\\[[$A-Za-z_][$\\w]*,[$A-Za-z_][$\\w]*\\]=\\(0,[$A-Za-z_][$\\w]*\\.useState\\)\\(!1\\),[$A-Za-z_][$\\w,]*;)",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "$1/* vscode-mods:hide-codex-tool-hook-rows */if($3.run.eventName===`preToolUse`||$3.run.eventName===`postToolUse`)return null;"
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+node_modules/
+dist/
+coverage/
+*.log
+*.tmp
+*.bak
+.*.bun-build
+.env
+.env.*
