@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { runMods, sha256 } from "../src/core.mjs";
@@ -15,6 +22,23 @@ const originalBundle = [
   "function k6(e){let t=(0,Q.c)(36),{item:n}=e,r=Ai(),[i,a]=(0,Z.useState)(!1),o,s,c,l,u,d,f,p;t[0]!==r;}",
   "function g5(a){let u=a.type===`hook`?(0,$.jsx)(k6,{item:a}):a.type===`reasoning`?null:p5({item:a});return u}",
   "function render(x,F,_e,t){for(let e of x)_e(`pre-user-${e.id}`,(0,$.jsx)(k6,{item:e}));for(let e of F)_e(`post-assistant-${e.id}`,e.type===`hook`?(0,$.jsx)(k6,{item:e}):p5({item:e,conversationId:t}))}",
+].join("");
+
+const projectHistoryMainBundle = [
+  "`local conversation has invalid createdAt or updatedAt`;",
+  "`header.recentTasks.seeAll`;",
+  "`codex.recentTasksMenu.count`;",
+  "`open-recent-tasks-menu`;",
+  "`h as Hm`;",
+  "function Yy(e,t,n){let r=gy(),i=Pt(xl),a=em(),o=zl(),s=(0,Z.useRef)(new Map);return(0,Z.useMemo)(()=>{let c=Zy(Xy({tasks:e,localConversations:t,pendingWorktrees:r,envForFilter:n,threadSortKey:i,isBackgroundSubagentsEnabled:a,windowType:o}),s.current);return s.current=new Map(c.map(e=>[e.key,e])),c},[e,n,a,t,r,i,o])}",
+  "function xCe(){let e=[],i,a,r,n,o,s,f={};let p=Si(f),m=(p.data??[]).filter(CCe),h;e[3]!==i||e[4]!==a?(h=e=>Jy({conversation:e,isBackgroundSubagentsEnabled:i,windowType:a}),e[3]=i,e[4]=a,e[5]=h):h=e[5];let g=(r??[]).filter(h).filter(SCe),_=m.length+g.length,v=1;return _+v}",
+].join("");
+
+const projectHistoryGroupsBundle = [
+  'import{s as oe}from"./thread-context-inputs-fixture.js";',
+  "`THREAD_WORKSPACE_ROOT_HINTS`;",
+  "`No cwd found for local task`;",
+  "function we(){let {data:w,isLoading:T}=h(oe),{data:re,isLoading:E}=F(),D=1;return [w,T,re,E,D]}",
 ].join("");
 
 afterEach(async () => {
@@ -56,6 +80,33 @@ async function fixture(bundle = originalBundle) {
   await mkdir(path.dirname(bundlePath), { recursive: true });
   await writeFile(bundlePath, bundle, "utf8");
   return { extensionsRoot, bundlePath, stateRoot };
+}
+
+async function projectHistoryFixture() {
+  const root = await mkdtemp(path.join(tmpdir(), "vscode-mods-history-test-"));
+  temporaryRoots.push(root);
+  const extensionsRoot = path.join(root, "extensions");
+  const assetsRoot = path.join(
+    extensionsRoot,
+    "openai.chatgpt-26.5409.20454",
+    "webview",
+    "assets",
+  );
+  const mainBundlePath = path.join(assetsRoot, "index-fixture.js");
+  const groupsBundlePath = path.join(
+    assetsRoot,
+    "local-environment-action-icon-options-fixture.js",
+  );
+  const stateRoot = path.join(root, "state");
+  await mkdir(assetsRoot, { recursive: true });
+  await writeFile(mainBundlePath, projectHistoryMainBundle, "utf8");
+  await writeFile(groupsBundlePath, projectHistoryGroupsBundle, "utf8");
+  return {
+    extensionsRoot,
+    groupsBundlePath,
+    mainBundlePath,
+    stateRoot,
+  };
 }
 
 async function customMods(mutator) {
@@ -138,6 +189,7 @@ describe("folder-based mod application", () => {
     const paths = await fixture();
     const logger = memoryLogger();
     const first = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -165,6 +217,7 @@ describe("folder-based mod application", () => {
     );
 
     const second = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -178,6 +231,7 @@ describe("folder-based mod application", () => {
     const paths = await fixture();
     const logger = memoryLogger();
     await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -185,6 +239,7 @@ describe("folder-based mod application", () => {
     });
 
     const restored = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       action: "restore",
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
@@ -212,6 +267,7 @@ describe("folder-based mod application", () => {
     );
 
     const upgraded = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -232,6 +288,7 @@ describe("folder-based mod application", () => {
     );
 
     const restored = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       action: "restore",
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
@@ -247,6 +304,7 @@ describe("folder-based mod application", () => {
     const paths = await fixture(mismatched);
     const logger = memoryLogger();
     const result = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -261,6 +319,7 @@ describe("folder-based mod application", () => {
     const paths = await fixture();
     const logger = memoryLogger();
     await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -269,6 +328,7 @@ describe("folder-based mod application", () => {
     await writeFile(paths.bundlePath, "updated by someone else", "utf8");
 
     const result = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       action: "restore",
       modsRoot,
       extensionRoots: [paths.extensionsRoot],
@@ -292,6 +352,7 @@ describe("folder-based mod application", () => {
     });
 
     const result = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot: transactionalModsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -310,6 +371,7 @@ describe("folder-based mod application", () => {
     });
 
     const result = await runMods({
+      selectedIds: ["hide-codex-tool-hook-rows"],
       modsRoot: invalidModsRoot,
       extensionRoots: [paths.extensionsRoot],
       stateRoot: paths.stateRoot,
@@ -317,5 +379,140 @@ describe("folder-based mod application", () => {
     });
     expect(result.failures).toBe(1);
     expect(await readFile(paths.bundlePath, "utf8")).toBe(originalBundle);
+  });
+});
+
+describe("project-scoped history mod", () => {
+  test("patches both history bundles, is idempotent, and restores exactly", async () => {
+    const paths = await projectHistoryFixture();
+    const logger = memoryLogger();
+    const first = await runMods({
+      selectedIds: ["scope-codex-history-to-project"],
+      modsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    expect(first).toEqual({
+      applied: 2,
+      restored: 0,
+      unchanged: 0,
+      failures: 0,
+    });
+
+    const patchedMain = await readFile(paths.mainBundlePath, "utf8");
+    const patchedGroups = await readFile(paths.groupsBundlePath, "utf8");
+    expect(patchedMain).toContain(
+      "/* vscode-mods:project-scoped-merged-history */",
+    );
+    expect(patchedMain).toContain(
+      "/* vscode-mods:project-scoped-running-count */",
+    );
+    expect(patchedGroups).toContain(
+      "/* vscode-mods:active-project-workspace-roots */",
+    );
+
+    const second = await runMods({
+      selectedIds: ["scope-codex-history-to-project"],
+      modsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    expect(second.failures).toBe(0);
+    expect(second.unchanged).toBe(2);
+
+    const restored = await runMods({
+      selectedIds: ["scope-codex-history-to-project"],
+      action: "restore",
+      modsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    expect(restored.failures).toBe(0);
+    expect(restored.restored).toBe(2);
+    expect(await readFile(paths.mainBundlePath, "utf8")).toBe(
+      projectHistoryMainBundle,
+    );
+    expect(await readFile(paths.groupsBundlePath, "utf8")).toBe(
+      projectHistoryGroupsBundle,
+    );
+  });
+});
+
+describe("VS Code user settings mods", () => {
+  test("preserves JSONC comments and restores the exact settings file", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vscode-mods-settings-test-"));
+    temporaryRoots.push(root);
+    const settingsFile = path.join(root, "User", "settings.json");
+    const stateRoot = path.join(root, "state");
+    const original = [
+      "{",
+      "  // Keep this comment.",
+      '  "editor.fontSize": 14,',
+      '  "chat.disableAIFeatures": false, // Keep this setting comment.',
+      "}",
+      "",
+    ].join("\n");
+    await mkdir(path.dirname(settingsFile), { recursive: true });
+    await writeFile(settingsFile, original, "utf8");
+    const logger = memoryLogger();
+
+    const applied = await runMods({
+      selectedIds: ["disable-vscode-native-chat"],
+      modsRoot,
+      settingsFiles: [settingsFile],
+      stateRoot,
+      logger,
+    });
+    expect(applied.failures).toBe(0);
+    expect(applied.applied).toBe(1);
+    const patched = await readFile(settingsFile, "utf8");
+    expect(patched).toContain("// Keep this comment.");
+    expect(patched).toContain("// Keep this setting comment.");
+    expect(Bun.JSONC.parse(patched)["chat.disableAIFeatures"]).toBe(true);
+
+    const restored = await runMods({
+      selectedIds: ["disable-vscode-native-chat"],
+      action: "restore",
+      modsRoot,
+      settingsFiles: [settingsFile],
+      stateRoot,
+      logger,
+    });
+    expect(restored.failures).toBe(0);
+    expect(await readFile(settingsFile, "utf8")).toBe(original);
+  });
+
+  test("creates and removes a missing settings file safely", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "vscode-mods-settings-new-"));
+    temporaryRoots.push(root);
+    const settingsFile = path.join(root, "User", "settings.json");
+    const stateRoot = path.join(root, "state");
+    const logger = memoryLogger();
+
+    const applied = await runMods({
+      selectedIds: ["disable-vscode-native-chat"],
+      modsRoot,
+      settingsFiles: [settingsFile],
+      stateRoot,
+      logger,
+    });
+    expect(applied.failures).toBe(0);
+    expect(Bun.JSONC.parse(await readFile(settingsFile, "utf8"))).toEqual({
+      "chat.disableAIFeatures": true,
+    });
+
+    const restored = await runMods({
+      selectedIds: ["disable-vscode-native-chat"],
+      action: "restore",
+      modsRoot,
+      settingsFiles: [settingsFile],
+      stateRoot,
+      logger,
+    });
+    expect(restored.failures).toBe(0);
+    await expect(access(settingsFile)).rejects.toThrow();
   });
 });

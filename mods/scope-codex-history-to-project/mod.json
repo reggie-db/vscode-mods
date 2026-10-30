@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "scope-codex-history-to-project",
+  "name": "Scope Codex history to the active project",
+  "description": "Show Codex history and running-task counts only for the active VS Code project.",
+  "extension": {
+    "id": "openai.chatgpt",
+    "directoryPrefix": "openai.chatgpt-"
+  },
+  "operations": [
+    {
+      "fileGlob": "webview/assets/local-environment-action-icon-options-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "THREAD_WORKSPACE_ROOT_HINTS",
+        "No cwd found for local task",
+        "thread-context-inputs-"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:active-project-query-import */",
+      "regex": {
+        "pattern": "import\\{s as oe\\}from\"\\./thread-context-inputs-([^\"]+)\\.js\";",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "/* vscode-mods:active-project-query-import */import{n as __vscodeModsActiveWorkspaceRootQuery,s as oe}from\"./thread-context-inputs-$1.js\";"
+      }
+    },
+    {
+      "fileGlob": "webview/assets/local-environment-action-icon-options-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "THREAD_WORKSPACE_ROOT_HINTS",
+        "No cwd found for local task",
+        "thread-context-inputs-"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:active-project-workspace-roots */",
+      "regex": {
+        "pattern": "\\{data:w,isLoading:T\\}=h\\(oe\\),\\{data:re,isLoading:E\\}=F\\(\\),",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "/* vscode-mods:active-project-workspace-roots */{data:__vscodeModsWorkspaceRootOptions,isLoading:__vscodeModsWorkspaceRootOptionsLoading}=h(oe),{data:__vscodeModsActiveWorkspaceRoots,isLoading:__vscodeModsActiveWorkspaceRootsLoading}=h(__vscodeModsActiveWorkspaceRootQuery),w={roots:__vscodeModsActiveWorkspaceRoots?.roots??[],labels:__vscodeModsWorkspaceRootOptions?.labels??{}},T=__vscodeModsWorkspaceRootOptionsLoading||__vscodeModsActiveWorkspaceRootsLoading,{data:re,isLoading:E}=F(),"
+      }
+    },
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "local conversation has invalid createdAt or updatedAt",
+        "header.recentTasks.seeAll",
+        "h as Hm"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:project-scoped-merged-history */",
+      "regex": {
+        "pattern": "function Yy\\(e,t,n\\)\\{let r=gy\\(\\),i=Pt\\(xl\\),a=em\\(\\),o=zl\\(\\),s=\\(0,Z\\.useRef\\)\\(new Map\\);return\\(0,Z\\.useMemo\\)\\(\\(\\)=>\\{let c=Zy\\(Xy\\(\\{tasks:e,localConversations:t,pendingWorktrees:r,envForFilter:n,threadSortKey:i,isBackgroundSubagentsEnabled:a,windowType:o\\}\\),s\\.current\\);return s\\.current=new Map\\(c\\.map\\(e=>\\[e\\.key,e\\]\\)\\),c\\},\\[e,n,a,t,r,i,o\\]\\)\\}",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "/* vscode-mods:project-scoped-merged-history */function Yy(e,t,n){let r=gy(),i=Pt(xl),a=em(),o=zl(),s=(0,Z.useRef)(new Map),c=(0,Z.useMemo)(()=>{let c=Zy(Xy({tasks:e,localConversations:t,pendingWorktrees:r,envForFilter:n,threadSortKey:i,isBackgroundSubagentsEnabled:a,windowType:o}),s.current);return s.current=new Map(c.map(e=>[e.key,e])),c},[e,n,a,t,r,i,o]),{groups:l,isWorkspaceRootOptionsLoading:u}=Hm(c),d=new Set(l.flatMap(e=>e.tasks.map(e=>e.key)));return u?[]:c.filter(e=>d.has(e.key))}"
+      }
+    },
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "codex.recentTasksMenu.count",
+        "open-recent-tasks-menu",
+        "project-scoped-merged-history"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:project-scoped-running-count */",
+      "regex": {
+        "pattern": "let p=Si\\(f\\),m=\\(p\\.data\\?\\?\\[\\]\\)\\.filter\\(CCe\\),h;e\\[3\\]!==i\\|\\|e\\[4\\]!==a\\?\\(h=e=>Jy\\(\\{conversation:e,isBackgroundSubagentsEnabled:i,windowType:a\\}\\),e\\[3\\]=i,e\\[4\\]=a,e\\[5\\]=h\\):h=e\\[5\\];let g=\\(r\\?\\?\\[\\]\\)\\.filter\\(h\\)\\.filter\\(SCe\\),_=m\\.length\\+g\\.length,",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "let p=Si(f),/* vscode-mods:project-scoped-running-count */__vscodeModsScopedTasks=Yy(p.data,r??[],null),m=__vscodeModsScopedTasks.filter(e=>e.kind===`remote`&&CCe(e.task)).map(e=>e.task),g=__vscodeModsScopedTasks.filter(e=>e.kind===`local`&&SCe(e.conversation)).map(e=>e.conversation),_=m.length+g.length,"
+      }
+    }
+  ]
+}

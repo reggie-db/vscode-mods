@@ -6,6 +6,7 @@ import packageJson from "../package.json" with { type: "json" };
 import {
   createLogger,
   defaultExtensionRoots,
+  defaultSettingsFiles,
   defaultStateRoot,
   runMods,
 } from "./core.mjs";
@@ -21,7 +22,8 @@ Usage:
 
 Options:
   --mods-dir PATH        Use a custom mods directory
-  --extensions-dir PATH Add a VS Code extensions directory (repeatable)
+  --extensions-dir PATH  Add a VS Code extensions directory (repeatable)
+  --settings-file PATH   Add a VS Code user settings file (repeatable)
   --state-dir PATH       Store logs and restore state in PATH
   --dry-run              Validate and report without changing files
   --strict               Exit non-zero when any mod fails
@@ -38,6 +40,7 @@ function parseArguments(argv) {
     action: "apply",
     selectedIds: [],
     extensionRoots: [],
+    settingsFiles: [],
     modsRoot: undefined,
     stateRoot: undefined,
     dryRun: false,
@@ -59,6 +62,8 @@ function parseArguments(argv) {
       options.modsRoot = requireValue(argv, ++index, argument);
     } else if (argument === "--extensions-dir") {
       options.extensionRoots.push(requireValue(argv, ++index, argument));
+    } else if (argument === "--settings-file") {
+      options.settingsFiles.push(requireValue(argv, ++index, argument));
     } else if (argument === "--state-dir") {
       options.stateRoot = requireValue(argv, ++index, argument);
     } else if (argument.startsWith("-")) {
@@ -141,6 +146,10 @@ async function main() {
         options.extensionRoots.length > 0
           ? options.extensionRoots.map((root) => path.resolve(root))
           : defaultExtensionRoots(),
+      settingsFiles:
+        options.settingsFiles.length > 0
+          ? options.settingsFiles.map((file) => path.resolve(file))
+          : defaultSettingsFiles(),
       stateRoot,
       selectedIds: options.selectedIds,
       dryRun: options.dryRun,

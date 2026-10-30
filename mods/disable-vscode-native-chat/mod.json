@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "disable-vscode-native-chat",
+  "name": "Disable VS Code native chat",
+  "description": "Set VS Code's supported chat.disableAIFeatures user setting to true.",
+  "target": {
+    "kind": "vscode-user-settings"
+  },
+  "operations": [
+    {
+      "setting": "chat.disableAIFeatures",
+      "value": true
+    }
+  ]
+}

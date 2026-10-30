@@ -94,6 +94,70 @@ export function defaultExtensionRoots({
   ]);
 }
 
+export function defaultSettingsFiles({
+  environment = process.env,
+  home = homedir(),
+  platform = process.platform,
+} = {}) {
+  const configured = [
+    environment.VSCODE_SETTINGS_FILE,
+    environment.VSCODE_INSIDERS_SETTINGS_FILE,
+  ].filter(Boolean);
+  const portable = environment.VSCODE_PORTABLE
+    ? [
+        path.join(
+          environment.VSCODE_PORTABLE,
+          "data",
+          "user-data",
+          "User",
+          "settings.json",
+        ),
+      ]
+    : [];
+
+  if (platform === "win32") {
+    const appData =
+      environment.APPDATA ?? path.join(home, "AppData", "Roaming");
+    return uniquePaths([
+      ...configured,
+      ...portable,
+      path.join(appData, "Code", "User", "settings.json"),
+      path.join(appData, "Code - Insiders", "User", "settings.json"),
+    ]);
+  }
+
+  if (platform === "darwin") {
+    return uniquePaths([
+      ...configured,
+      ...portable,
+      path.join(
+        home,
+        "Library",
+        "Application Support",
+        "Code",
+        "User",
+        "settings.json",
+      ),
+      path.join(
+        home,
+        "Library",
+        "Application Support",
+        "Code - Insiders",
+        "User",
+        "settings.json",
+      ),
+    ]);
+  }
+
+  const configHome = environment.XDG_CONFIG_HOME ?? path.join(home, ".config");
+  return uniquePaths([
+    ...configured,
+    ...portable,
+    path.join(configHome, "Code", "User", "settings.json"),
+    path.join(configHome, "Code - Insiders", "User", "settings.json"),
+  ]);
+}
+
 function uniquePaths(values) {
   return [...new Set(values.map((value) => path.resolve(value)))];
 }
@@ -133,11 +197,19 @@ function validateManifest(value, directoryName) {
   if (value.id !== directoryName) {
     throw new Error(`id must match its folder name (${directoryName}).`);
   }
-  if (value.extension == null || typeof value.extension !== "object") {
-    throw new Error("extension must be an object.");
+  const targetKind = value.target?.kind ?? "extension";
+  if (!new Set(["extension", "vscode-user-settings"]).has(targetKind)) {
+    throw new Error(
+      'target.kind must be "extension" or "vscode-user-settings".',
+    );
   }
-  assertString(value.extension.id, "extension.id");
-  assertString(value.extension.directoryPrefix, "extension.directoryPrefix");
+  if (targetKind === "extension") {
+    if (value.extension == null || typeof value.extension !== "object") {
+      throw new Error("extension must be an object.");
+    }
+    assertString(value.extension.id, "extension.id");
+    assertString(value.extension.directoryPrefix, "extension.directoryPrefix");
+  }
   if (!Array.isArray(value.operations) || value.operations.length === 0) {
     throw new Error("operations must be a non-empty array.");
   }
@@ -146,6 +218,13 @@ function validateManifest(value, directoryName) {
     const prefix = `operations[${index}]`;
     if (operation == null || typeof operation !== "object") {
       throw new Error(`${prefix} must be an object.`);
+    }
+    if (targetKind === "vscode-user-settings") {
+      assertString(operation.setting, `${prefix}.setting`);
+      if (!("value" in operation)) {
+        throw new Error(`${prefix}.value is required.`);
+      }
+      continue;
     }
     assertString(operation.fileGlob, `${prefix}.fileGlob`);
     if (
@@ -463,6 +542,214 @@ async function planOperations({ mod, extensionRoot }) {
   );
 }
 
+function skipJsoncTrivia(content, start) {
+  let index = start;
+  while (index < content.length) {
+    if (/\s/.test(content[index])) {
+      index += 1;
+      continue;
+    }
+    if (content.startsWith("//", index)) {
+      const newline = content.indexOf("\n", index + 2);
+      return newline === -1
+        ? content.length
+        : skipJsoncTrivia(content, newline + 1);
+    }
+    if (content.startsWith("/*", index)) {
+      const end = content.indexOf("*/", index + 2);
+      return end === -1 ? content.length : skipJsoncTrivia(content, end + 2);
+    }
+    break;
+  }
+  return index;
+}
+
+function scanJsonString(content, start) {
+  let index = start + 1;
+  while (index < content.length) {
+    if (content[index] === "\\") {
+      index += 2;
+      continue;
+    }
+    if (content[index] === '"') {
+      return index + 1;
+    }
+    index += 1;
+  }
+  throw new Error("unterminated JSON string");
+}
+
+function scanJsoncValueEnd(content, start) {
+  if (content[start] === '"') {
+    return scanJsonString(content, start);
+  }
+
+  if (content[start] !== "{" && content[start] !== "[") {
+    let index = start;
+    while (index < content.length) {
+      if (
+        /\s/.test(content[index]) ||
+        content[index] === "," ||
+        content[index] === "}" ||
+        content.startsWith("//", index) ||
+        content.startsWith("/*", index)
+      ) {
+        return index;
+      }
+      index += 1;
+    }
+    return index;
+  }
+
+  const delimiters = [content[start]];
+  let index = start;
+  index += 1;
+  while (index < content.length) {
+    if (content[index] === '"') {
+      index = scanJsonString(content, index);
+      continue;
+    }
+    if (content.startsWith("//", index)) {
+      const newline = content.indexOf("\n", index + 2);
+      index = newline === -1 ? content.length : newline + 1;
+      continue;
+    }
+    if (content.startsWith("/*", index)) {
+      const end = content.indexOf("*/", index + 2);
+      if (end === -1) {
+        throw new Error("unterminated JSON comment");
+      }
+      index = end + 2;
+      continue;
+    }
+    const character = content[index];
+    if (character === "{" || character === "[") {
+      delimiters.push(character);
+    } else if (character === "}" || character === "]") {
+      const opening = delimiters.pop();
+      if (
+        (opening === "{" && character !== "}") ||
+        (opening === "[" && character !== "]")
+      ) {
+        throw new Error("settings.json contains mismatched delimiters");
+      }
+      if (delimiters.length === 0) {
+        return index + 1;
+      }
+    }
+    index += 1;
+  }
+  throw new Error("settings.json contains an unterminated value");
+}
+
+function findRootJsoncProperty(content, key) {
+  let index = skipJsoncTrivia(content, 0);
+  if (content[index] !== "{") {
+    throw new Error("settings.json must contain a JSON object");
+  }
+  index += 1;
+  while (index < content.length) {
+    index = skipJsoncTrivia(content, index);
+    if (content[index] === "}") {
+      return null;
+    }
+    if (content[index] !== '"') {
+      throw new Error("settings.json contains an invalid root property");
+    }
+    const propertyStart = index;
+    const propertyEnd = scanJsonString(content, propertyStart);
+    const propertyName = JSON.parse(content.slice(propertyStart, propertyEnd));
+    index = skipJsoncTrivia(content, propertyEnd);
+    if (content[index] !== ":") {
+      throw new Error("settings.json contains a property without a value");
+    }
+    const valueStart = skipJsoncTrivia(content, index + 1);
+    const valueEnd = scanJsoncValueEnd(content, valueStart);
+    if (propertyName === key) {
+      return { valueStart, valueEnd };
+    }
+    index = skipJsoncTrivia(content, valueEnd);
+    if (content[index] === ",") {
+      index += 1;
+    }
+  }
+  return null;
+}
+
+function setJsoncRootProperty(content, key, value) {
+  const parsed = Bun.JSONC.parse(content);
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("settings.json must contain a JSON object");
+  }
+  const serializedValue = JSON.stringify(value);
+  const existing = findRootJsoncProperty(content, key);
+  let patched;
+  if (existing) {
+    patched =
+      `${content.slice(0, existing.valueStart)}${serializedValue}` +
+      content.slice(existing.valueEnd);
+  } else {
+    const openingBrace = content.indexOf("{");
+    const closingBrace = content.lastIndexOf("}");
+    const hasProperties = Object.keys(parsed).length > 0;
+    const lineEnding = content.includes("\r\n") ? "\r\n" : "\n";
+    const indentation =
+      content.slice(openingBrace + 1, closingBrace).match(/\r?\n([ \t]+)"/)?.[1] ??
+      "  ";
+    const insertion =
+      `${lineEnding}${indentation}${JSON.stringify(key)}: ` +
+      `${serializedValue}${hasProperties ? "," : ""}`;
+    patched =
+      `${content.slice(0, openingBrace + 1)}${insertion}` +
+      content.slice(openingBrace + 1);
+  }
+
+  const patchedValue = Bun.JSONC.parse(patched)?.[key];
+  if (JSON.stringify(patchedValue) !== serializedValue) {
+    throw new Error(`settings.json validation failed for ${key}`);
+  }
+  return patched;
+}
+
+async function resolveSettingsTargets(settingsFiles) {
+  const existing = [];
+  for (const file of uniquePaths(settingsFiles)) {
+    if (await isFile(file)) {
+      existing.push(file);
+    }
+  }
+  return existing.length > 0 ? existing : uniquePaths(settingsFiles).slice(0, 1);
+}
+
+async function planSettingsOperations({ mod, settingsFile }) {
+  const originalExists = await isFile(settingsFile);
+  const content = originalExists ? await readFile(settingsFile, "utf8") : "{}\n";
+  let patched = content;
+  for (const operation of mod.operations) {
+    patched = setJsoncRootProperty(
+      patched,
+      operation.setting,
+      operation.value,
+    );
+  }
+
+  if (patched === content) {
+    return [{ kind: "unchanged", file: settingsFile }];
+  }
+  return [
+    {
+      kind: "patch",
+      file: settingsFile,
+      content,
+      patched,
+      fileMode: originalExists ? (await stat(settingsFile)).mode : 0o600,
+      originalExists,
+      originalHash: sha256(content),
+      patchedHash: sha256(patched),
+    },
+  ];
+}
+
 async function commitPlans({
   mod,
   plans,
@@ -493,25 +780,42 @@ async function commitPlans({
   );
   try {
     for (const plan of patchPlans) {
-      if (sha256(await readFile(plan.file)) !== plan.originalHash) {
+      if (plan.originalExists === false) {
+        if (await isFile(plan.file)) {
+          throw new Error(`${plan.file} was created after it was validated`);
+        }
+      } else if (sha256(await readFile(plan.file)) !== plan.originalHash) {
         throw new Error(`${plan.file} changed after it was validated`);
       }
 
       const previous = previousRecords.get(plan.file);
       let backup;
       let stateOriginalHash;
+      let stateCreated;
       if (previous) {
         if (previous.patchedHash !== plan.originalHash) {
           throw new Error(
             `${plan.file} does not match the previously applied mod state`,
           );
         }
-        const previousBackup = await readFile(previous.backup);
-        if (sha256(previousBackup) !== previous.originalHash) {
-          throw new Error(`Existing backup does not match ${plan.file}.`);
+        if (previous.created) {
+          backup = null;
+          stateOriginalHash = previous.originalHash;
+          stateCreated = true;
+        } else {
+          const previousBackup = await readFile(previous.backup);
+          if (sha256(previousBackup) !== previous.originalHash) {
+            throw new Error(`Existing backup does not match ${plan.file}.`);
+          }
+          backup = previous.backup;
+          stateOriginalHash = previous.originalHash;
+          stateCreated = false;
         }
-        backup = previous.backup;
-        stateOriginalHash = previous.originalHash;
+      } else if (plan.originalExists === false) {
+        await mkdir(path.dirname(plan.file), { recursive: true });
+        backup = null;
+        stateOriginalHash = plan.originalHash;
+        stateCreated = true;
       } else {
         backup = await ensureBackup(
           plan.file,
@@ -521,18 +825,25 @@ async function commitPlans({
           stateRoot,
         );
         stateOriginalHash = plan.originalHash;
+        stateCreated = false;
       }
       await atomicWrite(plan.file, plan.patched, plan.fileMode);
       if (sha256(await readFile(plan.file)) !== plan.patchedHash) {
         throw new Error(`post-write verification failed for ${plan.file}`);
       }
-      committed.push({ ...plan, backup, stateOriginalHash });
+      committed.push({
+        ...plan,
+        backup,
+        stateOriginalHash,
+        stateCreated,
+      });
     }
 
     for (const plan of committed) {
       rememberTarget(state, mod.id, {
         file: plan.file,
         backup: plan.backup,
+        created: plan.stateCreated,
         originalHash: plan.stateOriginalHash,
         patchedHash: plan.patchedHash,
         appliedAt: new Date().toISOString(),
@@ -543,7 +854,11 @@ async function commitPlans({
     let rollbackFailed = false;
     for (const plan of committed.reverse()) {
       try {
-        await atomicWrite(plan.file, plan.content, plan.fileMode);
+        if (plan.originalExists === false) {
+          await unlink(plan.file);
+        } else {
+          await atomicWrite(plan.file, plan.content, plan.fileMode);
+        }
       } catch (rollbackError) {
         rollbackFailed = true;
         logger.error(
@@ -582,8 +897,11 @@ async function restoreMod({ mod, state, stateRoot, logger, dryRun }) {
   let failures = 0;
   for (const record of records) {
     try {
-      if (!(await isFile(record.file)) || !(await isFile(record.backup))) {
-        throw new Error("target or backup is missing");
+      if (!(await isFile(record.file))) {
+        throw new Error("target is missing");
+      }
+      if (!record.created && !(await isFile(record.backup))) {
+        throw new Error("backup is missing");
       }
       const current = await readFile(record.file);
       if (sha256(current) !== record.patchedHash) {
@@ -591,18 +909,22 @@ async function restoreMod({ mod, state, stateRoot, logger, dryRun }) {
           "target changed after the mod was applied; refusing to overwrite it",
         );
       }
-      const backup = await readFile(record.backup);
-      if (sha256(backup) !== record.originalHash) {
-        throw new Error("backup checksum does not match the recorded original");
-      }
       if (dryRun) {
         logger.info(`${mod.id}: would restore ${record.file}`);
         unchanged += 1;
         continue;
       }
-      await atomicWrite(record.file, backup, (await stat(record.file)).mode);
-      if (sha256(await readFile(record.file)) !== record.originalHash) {
-        throw new Error("restored file failed checksum verification");
+      if (record.created) {
+        await unlink(record.file);
+      } else {
+        const backup = await readFile(record.backup);
+        if (sha256(backup) !== record.originalHash) {
+          throw new Error("backup checksum does not match the recorded original");
+        }
+        await atomicWrite(record.file, backup, (await stat(record.file)).mode);
+        if (sha256(await readFile(record.file)) !== record.originalHash) {
+          throw new Error("restored file failed checksum verification");
+        }
       }
       delete state.mods[mod.id].targets[record.file];
       restored += 1;
@@ -627,6 +949,7 @@ export async function runMods({
   action = "apply",
   modsRoot,
   extensionRoots = defaultExtensionRoots(),
+  settingsFiles = defaultSettingsFiles(),
   stateRoot = defaultStateRoot(),
   selectedIds = [],
   dryRun = false,
@@ -674,21 +997,32 @@ export async function runMods({
       continue;
     }
 
-    const extensionDirectories = await findExtensionDirectories(
-      mod,
-      extensionRoots,
-    );
-    if (extensionDirectories.length === 0) {
-      failures += 1;
-      logger.error(
-        `${mod.id}: ${mod.extension.id} was not found in ${extensionRoots.join(", ")}`,
-      );
-      continue;
+    const targetKind = mod.target?.kind ?? "extension";
+    let targets;
+    if (targetKind === "vscode-user-settings") {
+      targets = await resolveSettingsTargets(settingsFiles);
+      if (targets.length === 0) {
+        failures += 1;
+        logger.error(`${mod.id}: no VS Code settings file target is configured`);
+        continue;
+      }
+    } else {
+      targets = await findExtensionDirectories(mod, extensionRoots);
+      if (targets.length === 0) {
+        failures += 1;
+        logger.error(
+          `${mod.id}: ${mod.extension.id} was not found in ${extensionRoots.join(", ")}`,
+        );
+        continue;
+      }
     }
 
-    for (const extensionRoot of extensionDirectories) {
+    for (const target of targets) {
       try {
-        const plans = await planOperations({ mod, extensionRoot });
+        const plans =
+          targetKind === "vscode-user-settings"
+            ? await planSettingsOperations({ mod, settingsFile: target })
+            : await planOperations({ mod, extensionRoot: target });
         const result = await commitPlans({
           mod,
           plans,

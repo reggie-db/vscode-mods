@@ -38,12 +38,18 @@ vscode-mods apply
 vscode-mods list
 vscode-mods restore
 vscode-mods apply hide-codex-tool-hook-rows
+vscode-mods apply scope-codex-history-to-project
+vscode-mods apply disable-vscode-native-chat
 vscode-mods apply --dry-run
 ```
 
 Use `--extensions-dir PATH` for a nonstandard or portable VS Code extension
 directory. Set `VSCODE_EXTENSIONS_DIR`, `VSCODE_INSIDERS_EXTENSIONS_DIR`, or
 `VSCODE_PORTABLE` to configure discovery without command flags.
+
+Use `--settings-file PATH` for a nonstandard VS Code user settings file. Set
+`VSCODE_SETTINGS_FILE` or `VSCODE_INSIDERS_SETTINGS_FILE` to configure one
+without a command flag.
 
 Windows installs the executable at
 `%LOCALAPPDATA%\Programs\vscode-mods\bin\vscode-mods.exe` and prints that path.
@@ -62,18 +68,23 @@ stop the remaining folders.
 
 ```text
 mods/
-└── hide-codex-tool-hook-rows/
-    ├── mod.json
-    └── README.md
+├── disable-vscode-native-chat/
+├── hide-codex-tool-hook-rows/
+└── scope-codex-history-to-project/
 ```
 
-Mods are declarative. Each operation identifies one extension-relative file,
-requires known markers, and performs a regular-expression replacement only
-when the expected match count is exact. This intentionally makes patches fail
-after incompatible extension updates instead of guessing against changed code.
+Mods are declarative. Extension operations identify one extension-relative
+file, require known markers, and perform a regular-expression replacement only
+when the expected match count is exact. User-settings operations set one JSONC
+property while preserving the rest of the file. Extension patches intentionally
+fail after incompatible updates instead of guessing against changed code.
 
 The included Codex mod keeps `PreToolUse`, `PostToolUse`, and
 `UserPromptSubmit` hooks running while hiding their webview timeline rows.
+The project-history mod limits the inline list, full history menu, sidebar,
+`View all` total, and running-task counter to the active VS Code project. The
+native-chat mod uses VS Code's supported `chat.disableAIFeatures` user setting
+instead of modifying the VS Code application bundle.
 
 ## Safety behavior
 
@@ -82,6 +93,7 @@ The included Codex mod keeps `PreToolUse`, `PostToolUse`, and
 - Backups include the original file checksum.
 - Restore refuses to overwrite a file changed after the mod was applied.
 - Patch failures are logged and skipped.
+- User settings edits preserve JSONC comments and unrelated settings.
 - The default process exit code is zero; use `--strict` in CI to request a
   nonzero exit when any mod fails.
 - VS Code is never launched, stopped, or reloaded by the runner.
