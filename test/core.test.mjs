@@ -8,11 +8,13 @@ const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const modsRoot = path.join(repositoryRoot, "mods");
 const temporaryRoots = [];
 const originalBundle = [
-  "localConversation.hookItem.summary.ariaLabel",
-  "localConversation.hookItem.eventName.preToolUse",
-  "localConversation.hookItem.eventName.postToolUse",
+  "`localConversation.hookItem.summary.ariaLabel`;",
+  "`localConversation.hookItem.eventName.preToolUse`;",
+  "`localConversation.hookItem.eventName.postToolUse`;",
   "function k6(e){let t=(0,Q.c)(36),{item:n}=e,r=Ai(),[i,a]=(0,Z.useState)(!1),o,s,c,l,u,d,f,p;t[0]!==r;}",
-].join(";");
+  "function g5(a){let u=a.type===`hook`?(0,$.jsx)(k6,{item:a}):a.type===`reasoning`?null:p5({item:a});return u}",
+  "function render(x,F,_e,t){for(let e of x)_e(`pre-user-${e.id}`,(0,$.jsx)(k6,{item:e}));for(let e of F)_e(`post-assistant-${e.id}`,e.type===`hook`?(0,$.jsx)(k6,{item:e}):p5({item:e,conversationId:t}))}",
+].join("");
 
 afterEach(async () => {
   await Promise.all(
@@ -94,6 +96,15 @@ describe("folder-based mod application", () => {
     expect(await readFile(paths.bundlePath, "utf8")).toContain(
       "/* vscode-mods:hide-codex-tool-hook-rows */",
     );
+    expect(await readFile(paths.bundlePath, "utf8")).toContain(
+      "/* vscode-mods:hide-codex-tool-hook-unit */",
+    );
+    expect(await readFile(paths.bundlePath, "utf8")).toContain(
+      "/* vscode-mods:hide-codex-pre-user-hook-row */",
+    );
+    expect(await readFile(paths.bundlePath, "utf8")).toContain(
+      "/* vscode-mods:hide-codex-post-assistant-hook-row */",
+    );
 
     const second = await runMods({
       modsRoot,
@@ -128,6 +139,51 @@ describe("folder-based mod application", () => {
       unchanged: 0,
       failures: 0,
     });
+    expect(await readFile(paths.bundlePath, "utf8")).toBe(originalBundle);
+  });
+
+  test("upgrades an applied mod while preserving the original backup", async () => {
+    const paths = await fixture();
+    const logger = memoryLogger();
+    const previousModsRoot = await customMods((manifest) => {
+      manifest.operations = manifest.operations.slice(0, 1);
+    });
+
+    await runMods({
+      modsRoot: previousModsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    const previousVersion = await readFile(paths.bundlePath, "utf8");
+    expect(previousVersion).toContain(
+      "/* vscode-mods:hide-codex-tool-hook-rows */",
+    );
+    expect(previousVersion).not.toContain(
+      "/* vscode-mods:hide-codex-tool-hook-unit */",
+    );
+
+    const upgraded = await runMods({
+      modsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    expect(upgraded).toEqual({
+      applied: 1,
+      restored: 0,
+      unchanged: 0,
+      failures: 0,
+    });
+
+    const restored = await runMods({
+      action: "restore",
+      modsRoot,
+      extensionRoots: [paths.extensionsRoot],
+      stateRoot: paths.stateRoot,
+      logger,
+    });
+    expect(restored.failures).toBe(0);
     expect(await readFile(paths.bundlePath, "utf8")).toBe(originalBundle);
   });
 

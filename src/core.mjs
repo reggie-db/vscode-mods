@@ -380,70 +380,87 @@ async function ensureBackup(file, content, hash, modId, stateRoot) {
   return backupPath;
 }
 
-async function planOperation({
-  mod,
-  operation,
-  extensionRoot,
-}) {
-  const candidates = await findOperationFiles(extensionRoot, operation.fileGlob);
-  const matching = [];
-  for (const candidate of candidates) {
-    const content = await readFile(candidate, "utf8");
-    if (operation.requiredContains.every((marker) => content.includes(marker))) {
-      matching.push({ file: candidate, content });
+async function planOperations({ mod, extensionRoot }) {
+  const stagedFiles = new Map();
+
+  for (const operation of mod.operations) {
+    const candidates = await findOperationFiles(
+      extensionRoot,
+      operation.fileGlob,
+    );
+    const matching = [];
+    for (const candidate of candidates) {
+      const staged = stagedFiles.get(candidate);
+      const content = staged?.patched ?? await readFile(candidate, "utf8");
+      if (operation.requiredContains.every((marker) => content.includes(marker))) {
+        matching.push({ file: candidate, content });
+      }
     }
-  }
 
-  if (matching.length !== 1) {
-    throw new Error(
-      `${mod.id}: expected one matching ${operation.fileGlob} in ${extensionRoot}, found ${matching.length}.`,
+    if (matching.length !== 1) {
+      throw new Error(
+        `${mod.id}: expected one matching ${operation.fileGlob} in ${extensionRoot}, found ${matching.length}.`,
+      );
+    }
+
+    const { file, content } = matching[0];
+    let staged = stagedFiles.get(file);
+    if (!staged) {
+      staged = {
+        file,
+        content,
+        patched: content,
+        fileMode: (await stat(file)).mode,
+      };
+      stagedFiles.set(file, staged);
+    }
+
+    if (content.includes(operation.alreadyAppliedMarker)) {
+      continue;
+    }
+
+    const matchCount = [
+      ...content.matchAll(
+        createGlobalRegex(operation.regex.pattern, operation.regex.flags),
+      ),
+    ].length;
+    if (matchCount !== operation.regex.expectedMatches) {
+      throw new Error(
+        `${mod.id}: expected ${operation.regex.expectedMatches} patch match(es) in ${file}, found ${matchCount}.`,
+      );
+    }
+
+    const patched = content.replace(
+      createReplaceRegex(operation.regex.pattern, operation.regex.flags),
+      operation.regex.replacement,
     );
+    if (
+      patched === content ||
+      !patched.includes(operation.alreadyAppliedMarker) ||
+      patched.split(operation.alreadyAppliedMarker).length - 1 !== 1
+    ) {
+      throw new Error(`${mod.id}: patched output validation failed for ${file}.`);
+    }
+    if (operation.syntax === "javascript") {
+      try {
+        new Bun.Transpiler({ loader: "js" }).transformSync(patched);
+      } catch (error) {
+        throw new Error(`${mod.id}: JavaScript validation failed for ${file}: ${error.message}`);
+      }
+    }
+    staged.patched = patched;
   }
 
-  const { file, content } = matching[0];
-  if (content.includes(operation.alreadyAppliedMarker)) {
-    return { kind: "unchanged", file };
-  }
-
-  const matchCount = [
-    ...content.matchAll(
-      createGlobalRegex(operation.regex.pattern, operation.regex.flags),
-    ),
-  ].length;
-  if (matchCount !== operation.regex.expectedMatches) {
-    throw new Error(
-      `${mod.id}: expected ${operation.regex.expectedMatches} patch match(es) in ${file}, found ${matchCount}.`,
-    );
-  }
-
-  const patched = content.replace(
-    createReplaceRegex(operation.regex.pattern, operation.regex.flags),
-    operation.regex.replacement,
+  return [...stagedFiles.values()].map((plan) =>
+    plan.patched === plan.content
+      ? { kind: "unchanged", file: plan.file }
+      : {
+          kind: "patch",
+          ...plan,
+          originalHash: sha256(plan.content),
+          patchedHash: sha256(plan.patched),
+        },
   );
-  if (
-    patched === content ||
-    !patched.includes(operation.alreadyAppliedMarker) ||
-    patched.split(operation.alreadyAppliedMarker).length - 1 !== 1
-  ) {
-    throw new Error(`${mod.id}: patched output validation failed for ${file}.`);
-  }
-  if (operation.syntax === "javascript") {
-    try {
-      new Bun.Transpiler({ loader: "js" }).transformSync(patched);
-    } catch (error) {
-      throw new Error(`${mod.id}: JavaScript validation failed for ${file}: ${error.message}`);
-    }
-  }
-
-  return {
-    kind: "patch",
-    file,
-    content,
-    patched,
-    originalHash: sha256(content),
-    patchedHash: sha256(patched),
-    fileMode: (await stat(file)).mode,
-  };
 }
 
 async function commitPlans({
@@ -476,25 +493,47 @@ async function commitPlans({
   );
   try {
     for (const plan of patchPlans) {
-      const backup = await ensureBackup(
-        plan.file,
-        plan.content,
-        plan.originalHash,
-        mod.id,
-        stateRoot,
-      );
+      if (sha256(await readFile(plan.file)) !== plan.originalHash) {
+        throw new Error(`${plan.file} changed after it was validated`);
+      }
+
+      const previous = previousRecords.get(plan.file);
+      let backup;
+      let stateOriginalHash;
+      if (previous) {
+        if (previous.patchedHash !== plan.originalHash) {
+          throw new Error(
+            `${plan.file} does not match the previously applied mod state`,
+          );
+        }
+        const previousBackup = await readFile(previous.backup);
+        if (sha256(previousBackup) !== previous.originalHash) {
+          throw new Error(`Existing backup does not match ${plan.file}.`);
+        }
+        backup = previous.backup;
+        stateOriginalHash = previous.originalHash;
+      } else {
+        backup = await ensureBackup(
+          plan.file,
+          plan.content,
+          plan.originalHash,
+          mod.id,
+          stateRoot,
+        );
+        stateOriginalHash = plan.originalHash;
+      }
       await atomicWrite(plan.file, plan.patched, plan.fileMode);
       if (sha256(await readFile(plan.file)) !== plan.patchedHash) {
         throw new Error(`post-write verification failed for ${plan.file}`);
       }
-      committed.push({ ...plan, backup });
+      committed.push({ ...plan, backup, stateOriginalHash });
     }
 
     for (const plan of committed) {
       rememberTarget(state, mod.id, {
         file: plan.file,
         backup: plan.backup,
-        originalHash: plan.originalHash,
+        originalHash: plan.stateOriginalHash,
         patchedHash: plan.patchedHash,
         appliedAt: new Date().toISOString(),
       });
@@ -649,10 +688,7 @@ export async function runMods({
 
     for (const extensionRoot of extensionDirectories) {
       try {
-        const plans = [];
-        for (const operation of mod.operations) {
-          plans.push(await planOperation({ mod, operation, extensionRoot }));
-        }
+        const plans = await planOperations({ mod, extensionRoot });
         const result = await commitPlans({
           mod,
           plans,

@@ -23,6 +23,54 @@
         "expectedMatches": 1,
         "replacement": "$1/* vscode-mods:hide-codex-tool-hook-rows */if($3.run.eventName===`preToolUse`||$3.run.eventName===`postToolUse`)return null;"
       }
+    },
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "localConversation.hookItem.summary.ariaLabel",
+        "localConversation.hookItem.eventName.preToolUse",
+        "localConversation.hookItem.eventName.postToolUse"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-tool-hook-unit */",
+      "regex": {
+        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(:\\2\\.type===`reasoning`\\?null)",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "$1/* vscode-mods:hide-codex-tool-hook-unit */($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`?null:$3)$5"
+      }
+    },
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "localConversation.hookItem.summary.ariaLabel",
+        "localConversation.hookItem.eventName.preToolUse",
+        "localConversation.hookItem.eventName.postToolUse"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-pre-user-hook-row */",
+      "regex": {
+        "pattern": "(for\\(let\\s+([$A-Za-z_][$\\w]*)\\s+of\\s+[$A-Za-z_][$\\w]*\\))(([$A-Za-z_][$\\w]*)\\(`pre-user-\\$\\{\\2\\.id\\}`,\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\([$A-Za-z_][$\\w]*,\\{item:\\2\\}\\)\\);)",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "$1{/* vscode-mods:hide-codex-pre-user-hook-row */if($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`)continue;$3}"
+      }
+    },
+    {
+      "fileGlob": "webview/assets/index-*.js",
+      "syntax": "javascript",
+      "requiredContains": [
+        "localConversation.hookItem.summary.ariaLabel",
+        "localConversation.hookItem.eventName.preToolUse",
+        "localConversation.hookItem.eventName.postToolUse"
+      ],
+      "alreadyAppliedMarker": "/* vscode-mods:hide-codex-post-assistant-hook-row */",
+      "regex": {
+        "pattern": "(([$A-Za-z_][$\\w]*)\\.type===`hook`\\?)(\\(0,[$A-Za-z_][$\\w]*\\.jsx\\)\\(([$A-Za-z_][$\\w]*),\\{item:\\2\\}\\))(:[$A-Za-z_][$\\w]*\\(\\{item:\\2,conversationId:)",
+        "flags": "",
+        "expectedMatches": 1,
+        "replacement": "$1/* vscode-mods:hide-codex-post-assistant-hook-row */($2.run.eventName===`preToolUse`||$2.run.eventName===`postToolUse`?null:$3)$5"
+      }
     }
   ]
 }
